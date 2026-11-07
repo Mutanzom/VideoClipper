@@ -135,15 +135,43 @@ public sealed partial class MainViewModel : ObservableObject
 
         item.Start = clip.Start;
         item.End = Duration > TimeSpan.Zero && clip.End > Duration ? Duration : clip.End;
-
-        int i = Clips.IndexOf(item);
-        bool inOrder = (i == 0 || Clips[i - 1].Start <= item.Start) && (i == Clips.Count - 1 || item.Start <= Clips[i + 1].Start);
-        if (!inOrder)
-        {
-            Clips.Remove(item);
-            AddClip(item);
-        }
+        Reorder(item);
         return null;
+    }
+
+    /// <summary>The shortest clip a timeline drag can leave: one frame.</summary>
+    private TimeSpan MinClipLength => TimeSpan.FromSeconds(Info is { Fps: > 0 } info ? 1.0 / info.Fps : 0.05);
+
+    /// <summary>
+    /// Moves one edge of a clip to <paramref name="t"/> (timeline drag), clamped to the video and so the
+    /// clip keeps at least a frame. The list isn't re-sorted until <see cref="Reorder"/>, so the clip
+    /// doesn't jump rows under the pointer mid-drag.
+    /// </summary>
+    public void DragEdge(ClipItem item, bool isStart, TimeSpan t)
+    {
+        if (isStart)
+        {
+            item.Start = Clamp(t, TimeSpan.Zero, item.End - MinClipLength);
+        }
+        else
+        {
+            var max = Duration > TimeSpan.Zero ? Duration : TimeSpan.MaxValue;
+            item.End = Clamp(t, item.Start + MinClipLength, max);
+        }
+    }
+
+    private static TimeSpan Clamp(TimeSpan t, TimeSpan min, TimeSpan max) =>
+        t > max ? (max < min ? min : max) : t < min ? min : t;
+
+    /// <summary>Puts a clip back in time order after its start moved.</summary>
+    public void Reorder(ClipItem item)
+    {
+        int i = Clips.IndexOf(item);
+        if (i < 0) return;
+        bool inOrder = (i == 0 || Clips[i - 1].Start <= item.Start) && (i == Clips.Count - 1 || item.Start <= Clips[i + 1].Start);
+        if (inOrder) return;
+        Clips.Remove(item);
+        AddClip(item);
     }
 
     /// <summary>Applies an edited export speed. Returns an error message, or null.</summary>

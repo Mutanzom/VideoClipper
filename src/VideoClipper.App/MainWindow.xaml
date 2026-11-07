@@ -71,15 +71,16 @@
                     </Grid>
                 </Border>
 
-                <!-- Timeline: clip ranges, pending start, playhead. Click or drag to seek. -->
-                <Grid x:Name="Timeline" Grid.Row="1" Height="44" CornerRadius="6"
+                <!-- Timeline: clip ranges, pending start, playhead. Click or drag to seek; drag a clip's ends to trim it. -->
+                <local:CursorGrid x:Name="Timeline" Grid.Row="1" Height="44" CornerRadius="6"
                       Background="{ThemeResource ControlFillColorDefaultBrush}"
                       BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}" BorderThickness="1"
                       SizeChanged="Timeline_SizeChanged"
                       PointerPressed="Timeline_PointerPressed" PointerMoved="Timeline_PointerMoved"
-                      PointerReleased="Timeline_PointerReleased" PointerCaptureLost="Timeline_PointerCaptureLost">
+                      PointerReleased="Timeline_PointerReleased" PointerCaptureLost="Timeline_PointerCaptureLost"
+                      PointerExited="Timeline_PointerExited">
                     <Canvas x:Name="TimelineCanvas" />
-                </Grid>
+                </local:CursorGrid>
 
                 <!-- Transport + marking -->
                 <Grid Grid.Row="2" ColumnSpacing="8">

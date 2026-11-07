@@ -18,7 +18,9 @@ WinUI 3 / .NET 9, unpackaged. FFmpeg does the cutting.
 | Esc | Drop a start you marked but haven't ended |
 | Ctrl+O | Open video |
 
-Click or drag on the timeline to seek. Marked clips show on it as numbered ranges. In the clip list
+Click or drag on the timeline to seek. Marked clips show on it as numbered ranges with a grip on each
+end: drag a grip to move that clip's start or end (the video shows the frame under it, and the times in
+the clip list follow). In the clip list
 you can type exact start/end times (`1:05.250`, `65.25`), play a single clip, or remove it.
 
 Export modes:

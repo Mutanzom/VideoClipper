@@ -622,6 +622,20 @@ public sealed partial class MainWindow : Window
                 Canvas.SetTop(label, 8);
                 TimelineCanvas.Children.Add(label);
             }
+
+            // Grips on both ends: these are what you drag to trim the clip (see EdgeAt).
+            double grip = Math.Min(4, Math.Max(1, (x1 - x0) / 2));
+            foreach (double gx in new[] { x0, x1 - grip })
+            {
+                var handle = new Rectangle
+                {
+                    Width = grip, Height = h - 12, Fill = Brush("TextFillColorPrimaryBrush"), Opacity = 0.9,
+                    RadiusX = 1.5, RadiusY = 1.5, IsHitTestVisible = false,
+                };
+                Canvas.SetLeft(handle, gx);
+                Canvas.SetTop(handle, 6);
+                TimelineCanvas.Children.Add(handle);
+            }
         }
 
         _pendingRange.Height = h;
@@ -654,26 +668,106 @@ public sealed partial class MainWindow : Window
 
     private void Timeline_SizeChanged(object sender, SizeChangedEventArgs e) => RedrawTimeline();
 
+    // A clip edge is grabbed from this many pixels away, so the 4 px grip is easy to hit.
+    private const double EdgeGrabPx = 8;
+
+    private ClipItem? _dragClip;
+    private bool _dragIsStart;
+    private InputSystemCursorShape _timelineCursor = InputSystemCursorShape.Arrow;
+
+    /// <summary>The clip edge nearest <paramref name="x"/> within grabbing distance, if any.</summary>
+    private (ClipItem Item, bool IsStart)? EdgeAt(double x)
+    {
+        if (ViewModel.IsExporting) return null;
+
+        (ClipItem, bool)? best = null;
+        double bestScore = double.MaxValue;
+        foreach (var clip in ViewModel.Clips)
+        {
+            foreach (bool isStart in new[] { true, false })
+            {
+                double edgeX = TimeToX(isStart ? clip.Start : clip.End);
+                double distance = Math.Abs(x - edgeX);
+                if (distance > EdgeGrabPx) continue;
+                // Touching clips share an edge position: prefer the edge of the clip the pointer is inside.
+                double score = distance + ((x >= edgeX) == isStart ? 0 : 0.01);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    best = (clip, isStart);
+                }
+            }
+        }
+        return best;
+    }
+
+    private void SetTimelineCursor(InputSystemCursorShape shape)
+    {
+        if (shape == _timelineCursor) return;
+        _timelineCursor = shape;
+        Timeline.SetCursor(shape);
+    }
+
+    private void DragTo(double x)
+    {
+        if (_dragClip is not { } clip) return;
+        ViewModel.DragEdge(clip, _dragIsStart, XToTime(x));
+        // Show the frame under the edge, so you can see exactly where the clip begins or ends.
+        Seek(_dragIsStart ? clip.Start : clip.End);
+    }
+
+    private void EndDrag()
+    {
+        _scrubbing = false;
+        if (_dragClip is { } clip)
+        {
+            _dragClip = null;
+            ViewModel.Reorder(clip);
+        }
+    }
+
     private void Timeline_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
         if (!ViewModel.HasVideo) return;
-        _scrubbing = Timeline.CapturePointer(e.Pointer);
-        Seek(XToTime(e.GetCurrentPoint(Timeline).Position.X));
+        double x = e.GetCurrentPoint(Timeline).Position.X;
+        bool captured = Timeline.CapturePointer(e.Pointer);
+
+        if (captured && EdgeAt(x) is { } edge)
+        {
+            _dragClip = edge.Item;
+            _dragIsStart = edge.IsStart;
+            _scrubbing = true; // keeps the playhead where the drag put it, not where the player lags
+            DragTo(x);
+        }
+        else
+        {
+            _scrubbing = captured;
+            Seek(XToTime(x));
+        }
         e.Handled = true;
     }
 
     private void Timeline_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (_scrubbing) Seek(XToTime(e.GetCurrentPoint(Timeline).Position.X));
+        double x = e.GetCurrentPoint(Timeline).Position.X;
+        if (_dragClip != null) DragTo(x);
+        else if (_scrubbing) Seek(XToTime(x));
+        else SetTimelineCursor(EdgeAt(x) != null ? InputSystemCursorShape.SizeWestEast : InputSystemCursorShape.Arrow);
     }
 
     private void Timeline_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
-        _scrubbing = false;
+        EndDrag();
         Timeline.ReleasePointerCapture(e.Pointer);
+        SetTimelineCursor(EdgeAt(e.GetCurrentPoint(Timeline).Position.X) != null ? InputSystemCursorShape.SizeWestEast : InputSystemCursorShape.Arrow);
     }
 
-    private void Timeline_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => _scrubbing = false;
+    private void Timeline_PointerCaptureLost(object sender, PointerRoutedEventArgs e) => EndDrag();
+
+    private void Timeline_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (_dragClip == null) SetTimelineCursor(InputSystemCursorShape.Arrow);
+    }
 
     // ================================================================== export
 
